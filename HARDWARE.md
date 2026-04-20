@@ -131,4 +131,15 @@ Justera konstanterna i `mopedspeedometer.ino` för ditt hjul:
    - Är ~12V vid GPIO25 LOW (vila)
    - Dras till ~0V vid GPIO25 HIGH (puls)
 3. **Strömförbrukning** – mät total strömförbrukning på 12V-ingång: förväntat **< 200 mA**
-4. **GPS-fix** – öppet fönster eller utomhus: vänta på fix (blinkande LED på NEO-6M-modul), kontrollera Serial Monitor i Arduino IDE
+4. **GPS-fix** – öppet fönster eller utomhus: vänta på fix (blinkande LED på NEO-6M-modul), kontrollera Serial Monitor i PlatformIO (115200 baud)
+
+### BLE-verifiering (med nRF Connect-appen)
+
+1. Ladda ner **nRF Connect** (iOS / Android) – gratis
+2. Öppna appen → **Scan** → leta efter `MopedSpeedo` i listan → tryck **Connect**
+3. Öppna servicen `4fafc201-…` → tryck på notify-ikonen (pil nedåt) på t.ex. **Speed**-karakteristiken → hastighetsdata börjar strömma (uppdateras 1 Hz)
+4. Testa **AUX-output** (GPIO26):
+   - Hitta karakteristiken `beb54843-…` (AUX_OUTPUT)
+   - Tryck **Write** → välj format `BYTE` → skriv `01` → GPIO26 går HIGH (enhet på)
+   - Skriv `00` → GPIO26 går LOW (enhet av)
+5. Kontrollera att Serial Monitor i PlatformIO visar `BLE: client connected` och `BLE: AUX output → ON/OFF`
