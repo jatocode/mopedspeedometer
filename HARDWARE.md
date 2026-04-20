@@ -1,18 +1,38 @@
 # Hårdvara – GPS Speedometer Pulse Emulator
 
-## Komponentlista
+## Inköpslista
 
-| # | Komponent | Specifikation | Antal |
-|---|-----------|---------------|-------|
-| 1 | ESP32 dev board | ESP32-WROOM-32 DevKit v1 | 1 |
-| 2 | GPS-modul | NEO-6M med keramisk antenn | 1 |
-| 3 | Buck converter | MP1584EN eller LM2596-baserad, 12V→5V | 1 |
-| 4 | NPN-transistor | 2N2222 / BC337 / S8050 | 1 |
-| 5 | Motstånd | 1 kΩ (basmotstånd) | 1 |
-| 6 | Motstånd | 10 kΩ (pull-up till 12V) | 1 |
-| 7 | Elektrolytkondensator | 100 µF / 16V (bulk-cap på 12V-ingång) | 1 |
-| 8 | Keramisk kondensator | 100 nF (bypass nära ESP32 VIN) | 1 |
-| 9 | Anslutningskablar | Dupont eller lödda skarvar | — |
+> Priserna är ungefärliga (april 2026). AliExpress är billigast men har 3–5 veckors leveranstid.
+> Electrokit/Kjell ger snabb leverans inom Sverige till något högre pris.
+
+| # | Komponent | Specifikation | Antal | Ca pris | Sök på |
+|---|-----------|---------------|-------|---------|--------|
+| 1 | ESP32 dev board | ESP32-WROOM-32 DevKit v1 (38-pin) | 1 | 45–80 kr | AliExpress / Electrokit |
+| 2 | GPS-modul | NEO-6M med keramisk patch-antenn | 1 | 40–70 kr | AliExpress / Amazon |
+| 3 | Buck converter-modul | MP1584EN eller LM2596-baserad, in 4–28V, ut adj. | 1 | 15–30 kr | AliExpress / Electrokit |
+| 4 | NPN-transistor | 2N2222A, BC337 eller S8050 (TO-92) | 1 (köp 10-pack) | 15–25 kr | Electrokit / Kjell |
+| 5 | Motstånd 1 kΩ | 1/4W metallfilm | 1 (köp 100-pack) | 15–30 kr | Electrokit / Kjell |
+| 6 | Motstånd 10 kΩ | 1/4W metallfilm | 1 (ingår i samma pack) | — | — |
+| 7 | Elektrolytkondensator | 100 µF / 16V (eller 25V), radiell | 1 | < 5 kr | Electrokit |
+| 8 | Keramisk kondensator | 100 nF (0,1 µF), 50V | 1 | < 5 kr | Electrokit |
+| 9 | Perfboard / gällbräda | 5 × 7 cm enkelsidig | 1 | 10–20 kr | Electrokit / Kjell |
+| 10 | Dupont-kablar | Hona–hona 20 cm, 10-pack | 1 pack | 20–35 kr | AliExpress / Electrokit |
+| 11 | Skarvkabel fordon | Tunna 0,5 mm² med 12V-anslutning (t.ex. Superseal/AMP) | 0,5 m | 20–40 kr | Biltillbehör / Biltema |
+| 12 | Gummigrommets | Ø7 mm kabeldragningsgrommet | 3 | 10–20 kr | Biltema / Biltillbehör |
+| 13 | M3-skruvar + muttrar | M3 × 10 mm, rostfri | 4 | 5–10 kr | Bauhaus / Biltema |
+| 14 | M3-skruvar montering | M3 × 16 mm + brickor (till moped-ram) | 4 | 5–10 kr | Bauhaus / Biltema |
+| 15 | Buntband | 100 × 2,5 mm, svart UV-beständig | 10 st | 10–15 kr | Biltema |
+| 16 | Krympslang | Ø3 mm och Ø6 mm, sortiment | 0,5 m | 15–25 kr | Electrokit / Biltema |
+| 17 | PLA/PETG-filament | 1,75 mm, valfri färg (för 3D-print) | ~80 g | 25–40 kr | 3D-printutskrift med eget filament |
+
+**Beräknad totalkostnad: ~300–500 kr** (exkl. filament och frakt; beroende på butik)
+
+> **Tips:** Motstånd och transistorer köps med fördel i sortimentsaskar om du inte redan har det –
+> sparkade på sikt och kostnaden är densamma för ett 100-pack som för lösa.
+
+---
+
+## Komponentlista
 
 ---
 
