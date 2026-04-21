@@ -18,7 +18,12 @@
 //
 // Libraries:
 //   mikalhart/TinyGPSPlus  (platformio.ini)
-//   BLE                    (built-in ESP32 Arduino Core, no extra dep)
+//   BLE / WiFi / ArduinoOTA (built-in ESP32 Arduino Core, no extra dep)
+//
+// OTA:
+//   After first USB flash the board is reachable as 'moped-speedo' on the LAN.
+//   In PlatformIO: Upload → select 'moped-speedo.local' as upload target.
+//   WiFi credentials live in include/secrets.h (gitignored).
 
 #include <Arduino.h>
 #include <HardwareSerial.h>
@@ -27,6 +32,9 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>   // CCCD descriptor – enables client notifications
+#include <WiFi.h>
+#include <ArduinoOTA.h>
+#include "secrets.h"   // #define WIFI_SSID / WIFI_PASSWORD (gitignored)
 
 // ── Configuration ──────────────────────────────────────────────────────────────
 const float WHEEL_CIRCUMFERENCE_M = 1.85f;
@@ -161,6 +169,39 @@ void setupBLE() {
   Serial.println("BLE: advertising as '" DEVICE_NAME "'");
 }
 
+// ── WiFi + OTA setup ──────────────────────────────────────────────────────────
+void setupWiFiOTA() {
+  Serial.printf("WiFi: connecting to '%s'", WIFI_SSID);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  // Non-blocking: try for up to 10 s, continue without OTA on failure
+  uint32_t t0 = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 10000) {
+    delay(250);
+    Serial.print('.');
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\nWiFi: not connected – OTA disabled");
+    return;
+  }
+
+  Serial.printf("\nWiFi: connected  IP %s\n", WiFi.localIP().toString().c_str());
+
+  ArduinoOTA.setHostname("moped-speedo");
+  ArduinoOTA.onStart([]()  { Serial.println("OTA: start"); });
+  ArduinoOTA.onEnd([]()    { Serial.println("\nOTA: done"); });
+  ArduinoOTA.onProgress([](unsigned int done, unsigned int total) {
+    Serial.printf("OTA: %u%%\r", done * 100 / total);
+  });
+  ArduinoOTA.onError([](ota_error_t e) {
+    Serial.printf("OTA error [%u]\n", e);
+  });
+  ArduinoOTA.begin();
+  Serial.println("OTA: ready – hostname 'moped-speedo'");
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
@@ -178,11 +219,13 @@ void setup() {
   timerAlarmWrite(pulseTimer, 100000, true);
 
   setupBLE();
+  setupWiFiOTA();
 
   Serial.println("GPS Speedometer starting – waiting for fix...");
 }
 
 void loop() {
+  ArduinoOTA.handle();   // must be called every loop iteration
   while (gpsSerial.available()) {
     gps.encode(gpsSerial.read());
   }

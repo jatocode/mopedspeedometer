@@ -1,0 +1,5 @@
+# WiFi credentials – never commit
+include/secrets.h
+
+# PlatformIO build output
+.pio/
