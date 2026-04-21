@@ -166,7 +166,7 @@ void setupBLE() {
   adv->addServiceUUID(SERVICE_UUID);
   adv->setScanResponse(true);
   BLEDevice::startAdvertising();
-  Serial.println("BLE: advertising as '" DEVICE_NAME "'");
+  Serial.printf("BLE: advertising as '%s'\n", DEVICE_NAME);
 }
 
 // ── WiFi + OTA setup ──────────────────────────────────────────────────────────
