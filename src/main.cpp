@@ -34,6 +34,7 @@
 #include <BLE2902.h>   // CCCD descriptor – enables client notifications
 #include <WiFi.h>
 #include <ArduinoOTA.h>
+#include <WebServer.h>
 #include "secrets.h"   // #define WIFI_SSID / WIFI_PASSWORD (gitignored)
 
 // ── Configuration ──────────────────────────────────────────────────────────────
@@ -56,6 +57,7 @@ constexpr char CHR_ALTITUDE[]    = "beb54840-36e1-4688-b7f5-ea07361b26a8";
 constexpr char CHR_SATELLITES[]  = "beb54841-36e1-4688-b7f5-ea07361b26a8";
 constexpr char CHR_FIX_STATUS[]  = "beb54842-36e1-4688-b7f5-ea07361b26a8";
 constexpr char CHR_AUX_OUTPUT[]  = "beb54843-36e1-4688-b7f5-ea07361b26a8";
+constexpr char CHR_IP_ADDRESS[]  = "beb54844-36e1-4688-b7f5-ea07361b26a8";
 // ──────────────────────────────────────────────────────────────────────────────
 
 HardwareSerial gpsSerial(2);
@@ -63,6 +65,16 @@ TinyGPSPlus    gps;
 
 hw_timer_t   *pulseTimer  = nullptr;
 volatile bool timerEnabled = false;
+
+// Latest telemetry – updated each GPS cycle, read by HTTP handler
+struct Telemetry {
+  float   speedKmh  = 0;
+  float   heading   = 0;
+  float   altitude  = 0;
+  uint8_t satellites = 0;
+  uint8_t fixStatus  = 0;
+  uint8_t auxOutput  = 0;
+} telem;
 
 // BLE handles
 BLEServer          *bleServer    = nullptr;
@@ -72,6 +84,7 @@ BLECharacteristic  *chrAltitude  = nullptr;
 BLECharacteristic  *chrSats      = nullptr;
 BLECharacteristic  *chrFixStatus = nullptr;
 BLECharacteristic  *chrAux       = nullptr;
+BLECharacteristic  *chrIpAddress = nullptr;
 bool                bleConnected = false;
 
 // ── BLE server callbacks ───────────────────────────────────────────────────────
@@ -91,6 +104,7 @@ class AuxWriteCallback : public BLECharacteristicCallbacks {
     val = val ? 1 : 0;                          // sanitise to 0 or 1
     digitalWrite(AUX_OUTPUT_PIN, val);
     digitalWrite(STATUS_LED_PIN, !val);         // active-low LED: invert AUX state
+    telem.auxOutput = val;
     c->setValue(&val, 1);                       // echo back confirmed state
     Serial.printf("BLE: AUX output → %s\n", val ? "ON" : "OFF");
   }
@@ -143,15 +157,18 @@ void setupBLE() {
   bleServer = BLEDevice::createServer();
   bleServer->setCallbacks(new ServerCallbacks());
 
-  // 6 characteristics × 3 handles each (decl + value + CCCD) + 1 service = 19
-  // Default is 15 which is too small – use 30 for headroom.
-  BLEService *svc = bleServer->createService(BLEUUID(SERVICE_UUID), 30);
+  // 7 characteristics × 3 handles each + 1 service = 22 → use 33 for headroom.
+  BLEService *svc = bleServer->createService(BLEUUID(SERVICE_UUID), 33);
 
   chrSpeed    = makeNotify(svc, CHR_SPEED);
   chrHeading  = makeNotify(svc, CHR_HEADING);
   chrAltitude = makeNotify(svc, CHR_ALTITUDE);
   chrSats     = makeNotify(svc, CHR_SATELLITES);
   chrFixStatus = makeNotify(svc, CHR_FIX_STATUS);
+
+  // IP address: read + notify, UTF-8 string, updated once WiFi connects
+  chrIpAddress = makeNotify(svc, CHR_IP_ADDRESS);
+  chrIpAddress->setValue("0.0.0.0");
 
   // AUX: read + write + notify
   chrAux = svc->createCharacteristic(
@@ -174,6 +191,8 @@ void setupBLE() {
 }
 
 // ── WiFi + OTA setup ──────────────────────────────────────────────────────────
+WebServer httpServer(80);
+
 void setupWiFiOTA() {
   Serial.printf("WiFi: connecting to '%s'", WIFI_SSID);
   WiFi.mode(WIFI_STA);
@@ -193,6 +212,11 @@ void setupWiFiOTA() {
 
   Serial.printf("\nWiFi: connected  IP %s\n", WiFi.localIP().toString().c_str());
 
+  // Publish IP over BLE so the client can find the HTTP endpoint
+  String ip = WiFi.localIP().toString();
+  chrIpAddress->setValue(ip.c_str());
+  if (bleConnected) chrIpAddress->notify();
+
   ArduinoOTA.setHostname("moped-speedo");
   ArduinoOTA.onStart([]()  { Serial.println("OTA: start"); });
   ArduinoOTA.onEnd([]()    { Serial.println("\nOTA: done"); });
@@ -204,6 +228,21 @@ void setupWiFiOTA() {
   });
   ArduinoOTA.begin();
   Serial.println("OTA: ready – hostname 'moped-speedo'");
+
+  httpServer.on("/", []() {
+    char buf[224];
+    snprintf(buf, sizeof(buf),
+      "{\"speed_kmh\":%.2f,\"heading\":%.2f,\"altitude\":%.2f,"
+      "\"satellites\":%u,\"fix_status\":%u,\"aux_output\":%u,"
+      "\"ip\":\"%s\"}",
+      telem.speedKmh, telem.heading, telem.altitude,
+      telem.satellites, telem.fixStatus, telem.auxOutput,
+      WiFi.localIP().toString().c_str());
+    httpServer.sendHeader("Access-Control-Allow-Origin", "*");
+    httpServer.send(200, "application/json", buf);
+  });
+  httpServer.begin();
+  Serial.println("HTTP: server started on port 80");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -232,7 +271,8 @@ void setup() {
 }
 
 void loop() {
-  ArduinoOTA.handle();   // must be called every loop iteration
+  ArduinoOTA.handle();
+  httpServer.handleClient();
   while (gpsSerial.available()) {
     gps.encode(gpsSerial.read());
   }
@@ -245,6 +285,12 @@ void loop() {
     float altitude  = hasFix ? (float)gps.altitude.meters() : 0.0f;
     uint8_t sats    = gps.satellites.isValid() ? (uint8_t)gps.satellites.value() : 0;
     uint8_t fixSt   = hasFix ? 1 : 0;
+
+    telem.speedKmh   = speedKmh;
+    telem.heading    = heading;
+    telem.altitude   = altitude;
+    telem.satellites = sats;
+    telem.fixStatus  = fixSt;
 
     // Pulse output
     if (hasFix) {

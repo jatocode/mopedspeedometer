@@ -123,6 +123,10 @@
         <span id="fix-text">--</span>
       </div>
     </div>
+    <div class="tile" style="grid-column: span 2;">
+      <div class="label">WiFi IP</div>
+      <div class="value" id="ip-address" style="font-size:1.2rem;">--</div>
+    </div>
   </div>
 
   <div class="aux-row">
@@ -144,6 +148,7 @@
   const CHR_SATELLITES = 'beb54841-36e1-4688-b7f5-ea07361b26a8';
   const CHR_FIX_STATUS = 'beb54842-36e1-4688-b7f5-ea07361b26a8';
   const CHR_AUX_OUTPUT = 'beb54843-36e1-4688-b7f5-ea07361b26a8';
+  const CHR_IP_ADDRESS = 'beb54844-36e1-4688-b7f5-ea07361b26a8';
 
   const btn       = document.getElementById('connect-btn');
   const statusEl  = document.getElementById('status');
@@ -250,6 +255,20 @@
         document.getElementById('fix-indicator').className = fix ? 'fix' : 'no-fix';
         document.getElementById('fix-text').textContent    = fix ? 'Fix' : 'No fix';
       });
+
+      // IP address — UTF-8 string, read once + notify on change
+      const chrIp = chars.get(CHR_IP_ADDRESS);
+      if (chrIp) {
+        const updateIp = val => {
+          document.getElementById('ip-address').textContent =
+            new TextDecoder().decode(val.target ? val.target.value : val);
+        };
+        const initIp = await chrIp.readValue();
+        document.getElementById('ip-address').textContent =
+          new TextDecoder().decode(initIp);
+        chrIp.addEventListener('characteristicvaluechanged', updateIp);
+        await chrIp.startNotifications();
+      }
 
       // AUX — read initial state, then subscribe
       chrAux = chars.get(CHR_AUX_OUTPUT);
