@@ -141,7 +141,9 @@ void setupBLE() {
   bleServer = BLEDevice::createServer();
   bleServer->setCallbacks(new ServerCallbacks());
 
-  BLEService *svc = bleServer->createService(SERVICE_UUID);
+  // 6 characteristics × 3 handles each (decl + value + CCCD) + 1 service = 19
+  // Default is 15 which is too small – use 30 for headroom.
+  BLEService *svc = bleServer->createService(BLEUUID(SERVICE_UUID), 30);
 
   chrSpeed    = makeNotify(svc, CHR_SPEED);
   chrHeading  = makeNotify(svc, CHR_HEADING);

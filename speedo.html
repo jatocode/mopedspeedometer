@@ -155,8 +155,17 @@
   const readFloat = e => new DataView(e.target.value.buffer).getFloat32(0, true);
   const readUint8 = e => new DataView(e.target.value.buffer).getUint8(0);
 
-  async function subscribeNotify(service, uuid, handler) {
-    const chr = await service.getCharacteristic(uuid);
+  // macOS Chrome: getCharacteristic(uuid) throws "Not supported" for 128-bit
+  // UUIDs. Fetch all characteristics once and look up by UUID in the result.
+  async function getAllCharacteristics(service) {
+    const all = await service.getCharacteristics();
+    console.log('Characteristics found:', all.map(c => c.uuid));
+    return new Map(all.map(c => [c.uuid, c]));
+  }
+
+  async function subscribeNotify(chars, uuid, handler) {
+    const chr = chars.get(uuid);
+    if (!chr) throw new Error(`Characteristic ${uuid} not found`);
     chr.addEventListener('characteristicvaluechanged', handler);
     await chr.startNotifications();
     return chr;
@@ -169,13 +178,16 @@
     }
     btn.disabled = true;
     statusEl.textContent = 'Scanning…';
+    console.log('Scanning…');
 
     try {
       const device = await navigator.bluetooth.requestDevice({
-        filters: [{ name: 'MopedSpeedo', services: [SERVICE_UUID] }]
+        filters: [{ name: 'MopedSpeedo' }],
+        optionalServices: [SERVICE_UUID]
       });
 
       statusEl.textContent = 'Connecting…';
+      console.log('Connecting…');
       device.addEventListener('gattserverdisconnected', () => {
         statusEl.textContent = 'Disconnected.';
         btn.textContent = 'Reconnect';
@@ -183,40 +195,65 @@
         auxToggle.disabled = true;
       });
 
-      // macOS Chrome sometimes needs a retry on first connection
+      const connectWithTimeout = () => Promise.race([
+        device.gatt.connect(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('connect timeout')), 6000))
+      ]);
+
       let server;
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-          server = await device.gatt.connect();
+          statusEl.textContent = attempt === 1 ? 'Connecting…' : `Connecting… (attempt ${attempt})`;
+          console.log(`gatt.connect attempt ${attempt}`);
+          server = await connectWithTimeout();
+          console.log('gatt.connect OK');
           break;
         } catch (e) {
-          if (attempt === 3) throw e;
-          statusEl.textContent = `Connecting… (attempt ${attempt + 1})`;
-          await new Promise(r => setTimeout(r, 1000));
+          console.warn(`gatt.connect attempt ${attempt} failed:`, e.message);
+          if (attempt === 3) throw new Error(`Could not connect after 3 attempts: ${e.message}`);
+          await new Promise(r => setTimeout(r, 1500));
         }
       }
-      const service = await server.getPrimaryService(SERVICE_UUID);
+      // macOS Chrome CoreBluetooth bug: getPrimaryService(uuid) throws
+      // "Not supported" for 128-bit UUIDs. The only reliable workaround is
+      // getPrimaryServices() (no argument) then find by UUID in the result.
+      statusEl.textContent = 'Discovering services…';
+      console.log('Discovering services…');
+      let service;
+      const allServices = await Promise.race([
+        server.getPrimaryServices(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('discovery timeout')), 10000))
+      ]);
+      console.log('Services found:', allServices.map(s => s.uuid));
+      service = allServices.find(s => s.uuid === SERVICE_UUID);
+      if (!service) {
+        throw new Error(`Service ${SERVICE_UUID} not found. Found: ${allServices.map(s => s.uuid).join(', ')}`);
+      }
 
-      await subscribeNotify(service, CHR_SPEED, e => {
+      statusEl.textContent = 'Reading characteristics…';
+      const chars = await getAllCharacteristics(service);
+
+      await subscribeNotify(chars, CHR_SPEED, e => {
         document.getElementById('speed-display').textContent = readFloat(e).toFixed(1);
       });
-      await subscribeNotify(service, CHR_HEADING, e => {
+      await subscribeNotify(chars, CHR_HEADING, e => {
         document.getElementById('heading').textContent = readFloat(e).toFixed(0) + '°';
       });
-      await subscribeNotify(service, CHR_ALTITUDE, e => {
+      await subscribeNotify(chars, CHR_ALTITUDE, e => {
         document.getElementById('altitude').textContent = readFloat(e).toFixed(0);
       });
-      await subscribeNotify(service, CHR_SATELLITES, e => {
+      await subscribeNotify(chars, CHR_SATELLITES, e => {
         document.getElementById('satellites').textContent = readUint8(e);
       });
-      await subscribeNotify(service, CHR_FIX_STATUS, e => {
+      await subscribeNotify(chars, CHR_FIX_STATUS, e => {
         const fix = readUint8(e);
         document.getElementById('fix-indicator').className = fix ? 'fix' : 'no-fix';
         document.getElementById('fix-text').textContent    = fix ? 'Fix' : 'No fix';
       });
 
       // AUX — read initial state, then subscribe
-      chrAux = await service.getCharacteristic(CHR_AUX_OUTPUT);
+      chrAux = chars.get(CHR_AUX_OUTPUT);
+      if (!chrAux) throw new Error(`AUX characteristic ${CHR_AUX_OUTPUT} not found`);
       const initVal = await chrAux.readValue();
       auxToggle.checked = new DataView(initVal.buffer).getUint8(0) === 1;
       chrAux.addEventListener('characteristicvaluechanged', e => {
