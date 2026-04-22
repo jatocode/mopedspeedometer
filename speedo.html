@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MopedSpeedo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #111;
+      color: #eee;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 24px 16px;
+    }
+
+    h1 { font-size: 1.2rem; letter-spacing: 0.15em; color: #888; margin-bottom: 24px; }
+
+    #speed-display {
+      font-size: 8rem;
+      font-weight: 700;
+      line-height: 1;
+      color: #fff;
+      letter-spacing: -4px;
+    }
+
+    #speed-unit { font-size: 1.4rem; color: #888; margin-bottom: 32px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      width: 100%;
+      max-width: 380px;
+      margin-bottom: 32px;
+    }
+
+    .tile {
+      background: #1e1e1e;
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+    .tile .label { font-size: 0.7rem; letter-spacing: 0.1em; color: #666; text-transform: uppercase; margin-bottom: 6px; }
+    .tile .value { font-size: 1.8rem; font-weight: 600; color: #fff; }
+    .tile .unit  { font-size: 0.75rem; color: #666; }
+
+    #fix-indicator {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #555;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    #fix-indicator.fix    { background: #4caf50; }
+    #fix-indicator.no-fix { background: #f44336; }
+
+    .aux-row { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+    .aux-row label { font-size: 0.85rem; color: #888; }
+
+    .toggle { position: relative; width: 48px; height: 26px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle .slider {
+      position: absolute; inset: 0;
+      background: #333; border-radius: 26px;
+      cursor: pointer; transition: background 0.2s;
+    }
+    .toggle .slider::before {
+      content: '';
+      position: absolute;
+      width: 20px; height: 20px;
+      left: 3px; top: 3px;
+      background: #fff; border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .slider { background: #4caf50; }
+    .toggle input:checked + .slider::before { transform: translateX(22px); }
+
+    button {
+      padding: 12px 32px;
+      font-size: 1rem; font-weight: 600;
+      border: none; border-radius: 8px;
+      cursor: pointer; transition: background 0.2s, opacity 0.2s;
+    }
+    #connect-btn { background: #2196f3; color: #fff; }
+    #connect-btn:hover { background: #1976d2; }
+    #connect-btn:disabled { opacity: 0.4; cursor: default; }
+
+    #status { margin-top: 16px; font-size: 0.8rem; color: #555; min-height: 1.2em; }
+  </style>
+</head>
+<body>
+
+  <h1>MOPED SPEEDO</h1>
+
+  <div id="speed-display">--</div>
+  <div id="speed-unit">km/h</div>
+
+  <div class="grid">
+    <div class="tile">
+      <div class="label">Heading</div>
+      <div class="value" id="heading">--</div>
+      <div class="unit">degrees</div>
+    </div>
+    <div class="tile">
+      <div class="label">Altitude</div>
+      <div class="value" id="altitude">--</div>
+      <div class="unit">metres</div>
+    </div>
+    <div class="tile">
+      <div class="label">Satellites</div>
+      <div class="value" id="satellites">--</div>
+    </div>
+    <div class="tile">
+      <div class="label">GPS Fix</div>
+      <div class="value">
+        <span id="fix-indicator"></span>
+        <span id="fix-text">--</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="aux-row">
+    <label for="aux-toggle">Aux Output</label>
+    <label class="toggle">
+      <input type="checkbox" id="aux-toggle" disabled>
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <button id="connect-btn">Connect via Bluetooth</button>
+  <div id="status">Web Bluetooth requires Chrome on Android/desktop.</div>
+
+<script>
+  const SERVICE_UUID   = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+  const CHR_SPEED      = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+  const CHR_HEADING    = 'beb5483f-36e1-4688-b7f5-ea07361b26a8';
+  const CHR_ALTITUDE   = 'beb54840-36e1-4688-b7f5-ea07361b26a8';
+  const CHR_SATELLITES = 'beb54841-36e1-4688-b7f5-ea07361b26a8';
+  const CHR_FIX_STATUS = 'beb54842-36e1-4688-b7f5-ea07361b26a8';
+  const CHR_AUX_OUTPUT = 'beb54843-36e1-4688-b7f5-ea07361b26a8';
+
+  const btn       = document.getElementById('connect-btn');
+  const statusEl  = document.getElementById('status');
+  const auxToggle = document.getElementById('aux-toggle');
+
+  let chrAux = null;
+  let ignoreAuxNotify = false;
+
+  const readFloat = e => new DataView(e.target.value.buffer).getFloat32(0, true);
+  const readUint8 = e => new DataView(e.target.value.buffer).getUint8(0);
+
+  async function subscribeNotify(service, uuid, handler) {
+    const chr = await service.getCharacteristic(uuid);
+    chr.addEventListener('characteristicvaluechanged', handler);
+    await chr.startNotifications();
+    return chr;
+  }
+
+  btn.addEventListener('click', async () => {
+    if (!navigator.bluetooth) {
+      statusEl.textContent = 'Web Bluetooth not supported in this browser.';
+      return;
+    }
+    btn.disabled = true;
+    statusEl.textContent = 'Scanning…';
+
+    try {
+      const device = await navigator.bluetooth.requestDevice({
+        filters: [{ name: 'MopedSpeedo', services: [SERVICE_UUID] }]
+      });
+
+      statusEl.textContent = 'Connecting…';
+      device.addEventListener('gattserverdisconnected', () => {
+        statusEl.textContent = 'Disconnected.';
+        btn.textContent = 'Reconnect';
+        btn.disabled = false;
+        auxToggle.disabled = true;
+      });
+
+      // macOS Chrome sometimes needs a retry on first connection
+      let server;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          server = await device.gatt.connect();
+          break;
+        } catch (e) {
+          if (attempt === 3) throw e;
+          statusEl.textContent = `Connecting… (attempt ${attempt + 1})`;
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+      const service = await server.getPrimaryService(SERVICE_UUID);
+
+      await subscribeNotify(service, CHR_SPEED, e => {
+        document.getElementById('speed-display').textContent = readFloat(e).toFixed(1);
+      });
+      await subscribeNotify(service, CHR_HEADING, e => {
+        document.getElementById('heading').textContent = readFloat(e).toFixed(0) + '°';
+      });
+      await subscribeNotify(service, CHR_ALTITUDE, e => {
+        document.getElementById('altitude').textContent = readFloat(e).toFixed(0);
+      });
+      await subscribeNotify(service, CHR_SATELLITES, e => {
+        document.getElementById('satellites').textContent = readUint8(e);
+      });
+      await subscribeNotify(service, CHR_FIX_STATUS, e => {
+        const fix = readUint8(e);
+        document.getElementById('fix-indicator').className = fix ? 'fix' : 'no-fix';
+        document.getElementById('fix-text').textContent    = fix ? 'Fix' : 'No fix';
+      });
+
+      // AUX — read initial state, then subscribe
+      chrAux = await service.getCharacteristic(CHR_AUX_OUTPUT);
+      const initVal = await chrAux.readValue();
+      auxToggle.checked = new DataView(initVal.buffer).getUint8(0) === 1;
+      chrAux.addEventListener('characteristicvaluechanged', e => {
+        if (ignoreAuxNotify) { ignoreAuxNotify = false; return; }
+        auxToggle.checked = readUint8(e) === 1;
+      });
+      await chrAux.startNotifications();
+      auxToggle.disabled = false;
+
+      statusEl.textContent = `Connected to ${device.name}`;
+      btn.textContent = 'Connected';
+
+    } catch (err) {
+      statusEl.textContent = `Error: ${err.message}`;
+      btn.disabled = false;
+    }
+  });
+
+  auxToggle.addEventListener('change', async () => {
+    if (!chrAux) return;
+    ignoreAuxNotify = true;
+    try {
+      await chrAux.writeValue(new Uint8Array([auxToggle.checked ? 1 : 0]));
+    } catch (err) {
+      statusEl.textContent = `AUX write error: ${err.message}`;
+      ignoreAuxNotify = false;
+    }
+  });
+</script>
+</body>
+</html>
