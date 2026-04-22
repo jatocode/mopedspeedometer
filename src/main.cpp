@@ -42,6 +42,7 @@ const int   PULSES_PER_REV        = 1;
 
 const int   PULSE_OUTPUT_PIN = 25;   // → NPN base, instrument pulse
 const int   AUX_OUTPUT_PIN   = 26;   // → transistor/relay, toggleable aux
+const int   STATUS_LED_PIN   = 5;    // built-in LED, mirrors AUX state
 
 const int   GPS_RX_PIN = 16;
 const int   GPS_TX_PIN = 17;
@@ -89,6 +90,7 @@ class AuxWriteCallback : public BLECharacteristicCallbacks {
     uint8_t val = c->getValue().length() ? c->getValue()[0] : 0;
     val = val ? 1 : 0;                          // sanitise to 0 or 1
     digitalWrite(AUX_OUTPUT_PIN, val);
+    digitalWrite(STATUS_LED_PIN, !val);         // active-low LED: invert AUX state
     c->setValue(&val, 1);                       // echo back confirmed state
     Serial.printf("BLE: AUX output → %s\n", val ? "ON" : "OFF");
   }
@@ -215,6 +217,9 @@ void setup() {
 
   pinMode(AUX_OUTPUT_PIN, OUTPUT);
   digitalWrite(AUX_OUTPUT_PIN, LOW);
+
+  pinMode(STATUS_LED_PIN, OUTPUT);
+  digitalWrite(STATUS_LED_PIN, LOW);
 
   pulseTimer = timerBegin(0, 80, true);
   timerAttachInterrupt(pulseTimer, &onTimer, true);

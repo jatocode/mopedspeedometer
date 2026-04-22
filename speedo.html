@@ -182,7 +182,7 @@
 
     try {
       const device = await navigator.bluetooth.requestDevice({
-        filters: [{ name: 'MopedSpeedo' }],
+        acceptAllDevices: true,
         optionalServices: [SERVICE_UUID]
       });
 
