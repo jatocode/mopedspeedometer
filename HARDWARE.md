@@ -39,22 +39,24 @@
 ## Kopplingsschema
 
 ```
-FORDON 12V GND ──────────────────────────────────────── GND (gemensam)
-FORDON 12V +  ──────┬────────────────────────────────── 12V-rail
-                    │
-              [100µF ║ 100nF till GND]  (glättning)
+FORDON 12V GND ──────────────────────────────────────────────── GND (gemensam)
+FORDON 12V +  ──────┬────────────────────────────────────────── 12V-rail
                     │
              ┌──────┴───────┐
              │ Buck converter│   ← ställ till 5.0V (mät med multimeter!)
              │   12V → 5V   │
              └──────┬───────┘
                     │ 5V
-           ┌────────┴─────────┐
-           │                  │
-      ESP32 VIN           NEO-6M VCC
-      (onboard AMS1117         │
-       ger 3.3V till chip)  NEO-6M GND ──── GND
-                            NEO-6M TX  ──── ESP32 GPIO16 (UART2 RX)
+                    ├─── 100 µF elektrolyt till GND  │ lång ben (+) mot 5V
+                    ├─── 100 nF keramisk till GND    │ placera nära utgången
+                    │
+           ┌────────┴───────────────────┐
+           │                            │
+      ESP32 VIN                    NEO-6M VCC
+      (onboard AMS1117                  │
+       ger 3.3V till chip)         NEO-6M GND ──── GND
+                                   NEO-6M TX  ──── ESP32 GPIO16 (UART2 RX)
+                                   NEO-6M RX  ──── ESP32 GPIO17 (UART2 TX)
 
 
 ESP32 GPIO25 ──── 1 kΩ ──── NPN-bas (2N2222)
@@ -65,6 +67,12 @@ ESP32 GPIO25 ──── 1 kΩ ──── NPN-bas (2N2222)
                                              │
                                             12V-rail
 ```
+
+> **Glättningskondensatorer:** De två kondensatorerna sitter parallellt direkt vid
+> buck-converterns utgång, så nära utgångsplinten som möjligt.
+> Elektreolyten (100 µF) hanterar lågfrekvent brus och belastningssvängningar;
+> den keramiska (100 nF) filtrerar högfrekvent switching-brus från buck-modulen.
+> Elektreolyten är **polariserad** – långt ben (anod +) mot 5V, kort ben med vit rand mot GND.
 
 ### Transistorlogik (aktiv-låg puls till instrument)
 
