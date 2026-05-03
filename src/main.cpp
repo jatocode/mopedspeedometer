@@ -65,6 +65,8 @@ constexpr char CHR_SATELLITES[]  = "beb54841-36e1-4688-b7f5-ea07361b26a8";
 constexpr char CHR_FIX_STATUS[]  = "beb54842-36e1-4688-b7f5-ea07361b26a8";
 constexpr char CHR_AUX_OUTPUT[]  = "beb54843-36e1-4688-b7f5-ea07361b26a8";
 constexpr char CHR_IP_ADDRESS[]  = "beb54844-36e1-4688-b7f5-ea07361b26a8";
+constexpr char CHR_WHEEL_CIRC[]  = "beb54845-36e1-4688-b7f5-ea07361b26a8";
+constexpr char CHR_PULSES[]      = "beb54846-36e1-4688-b7f5-ea07361b26a8";
 // ──────────────────────────────────────────────────────────────────────────────
 
 HardwareSerial gpsSerial(2);
@@ -110,6 +112,8 @@ BLECharacteristic  *chrSats      = nullptr;
 BLECharacteristic  *chrFixStatus = nullptr;
 BLECharacteristic  *chrAux       = nullptr;
 BLECharacteristic  *chrIpAddress = nullptr;
+BLECharacteristic  *chrWheelCirc = nullptr;
+BLECharacteristic  *chrPulses    = nullptr;
 bool                bleConnected = false;
 
 // ── BLE server callbacks ───────────────────────────────────────────────────────
@@ -182,8 +186,8 @@ void setupBLE() {
   bleServer = BLEDevice::createServer();
   bleServer->setCallbacks(new ServerCallbacks());
 
-  // 7 characteristics × 3 handles each + 1 service = 22 → use 33 for headroom.
-  BLEService *svc = bleServer->createService(BLEUUID(SERVICE_UUID), 33);
+  // 9 characteristics (7 notify + 2 read-only) × 2-3 handles + 1 service → use 39 for headroom.
+  BLEService *svc = bleServer->createService(BLEUUID(SERVICE_UUID), 39);
 
   chrSpeed    = makeNotify(svc, CHR_SPEED);
   chrHeading  = makeNotify(svc, CHR_HEADING);
@@ -194,6 +198,15 @@ void setupBLE() {
   // IP address: read + notify, UTF-8 string, updated once WiFi connects
   chrIpAddress = makeNotify(svc, CHR_IP_ADDRESS);
   chrIpAddress->setValue("0.0.0.0");
+
+  // Read-only config: wheel circumference (float32 LE) and pulses/rev (uint8)
+  chrWheelCirc = svc->createCharacteristic(CHR_WHEEL_CIRC, BLECharacteristic::PROPERTY_READ);
+  float circ = WHEEL_CIRCUMFERENCE_M;
+  chrWheelCirc->setValue(reinterpret_cast<uint8_t *>(&circ), sizeof(float));
+
+  chrPulses = svc->createCharacteristic(CHR_PULSES, BLECharacteristic::PROPERTY_READ);
+  uint8_t ppr = (uint8_t)PULSES_PER_REV;
+  chrPulses->setValue(&ppr, 1);
 
   // AUX: read + write + notify
   chrAux = svc->createCharacteristic(

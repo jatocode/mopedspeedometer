@@ -123,6 +123,15 @@
         <span id="fix-text">--</span>
       </div>
     </div>
+    <div class="tile">
+      <div class="label">Wheel Circ.</div>
+      <div class="value" id="wheel-circ">--</div>
+      <div class="unit">metres</div>
+    </div>
+    <div class="tile">
+      <div class="label">Pulses / Rev</div>
+      <div class="value" id="pulses-per-rev">--</div>
+    </div>
     <div class="tile" style="grid-column: span 2;">
       <div class="label">WiFi IP</div>
       <div class="value" id="ip-address" style="font-size:1.2rem;">--</div>
@@ -149,6 +158,8 @@
   const CHR_FIX_STATUS = 'beb54842-36e1-4688-b7f5-ea07361b26a8';
   const CHR_AUX_OUTPUT = 'beb54843-36e1-4688-b7f5-ea07361b26a8';
   const CHR_IP_ADDRESS = 'beb54844-36e1-4688-b7f5-ea07361b26a8';
+  const CHR_WHEEL_CIRC = 'beb54845-36e1-4688-b7f5-ea07361b26a8';
+  const CHR_PULSES     = 'beb54846-36e1-4688-b7f5-ea07361b26a8';
 
   const btn       = document.getElementById('connect-btn');
   const statusEl  = document.getElementById('status');
@@ -281,6 +292,20 @@
       });
       await chrAux.startNotifications();
       auxToggle.disabled = false;
+
+      // Config: read once on connect, read-only
+      const chrWheelCircChar = chars.get(CHR_WHEEL_CIRC);
+      if (chrWheelCircChar) {
+        const v = await chrWheelCircChar.readValue();
+        document.getElementById('wheel-circ').textContent =
+          new DataView(v.buffer).getFloat32(0, true).toFixed(3);
+      }
+      const chrPulsesChar = chars.get(CHR_PULSES);
+      if (chrPulsesChar) {
+        const v = await chrPulsesChar.readValue();
+        document.getElementById('pulses-per-rev').textContent =
+          new DataView(v.buffer).getUint8(0);
+      }
 
       statusEl.textContent = `Connected to ${device.name}`;
       btn.textContent = 'Connected';
