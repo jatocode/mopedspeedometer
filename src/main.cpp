@@ -42,8 +42,11 @@
 #include "secrets.h"   // #define WIFI_SSID / WIFI_PASSWORD (gitignored)
 
 // ── Configuration ──────────────────────────────────────────────────────────────
-const float WHEEL_CIRCUMFERENCE_M = 1.85f;
-const int   PULSES_PER_REV        = 1;
+const float    WHEEL_CIRCUMFERENCE_M = 1.85f;
+const int      PULSES_PER_REV        = 1;
+
+const uint32_t LOG_INTERVAL_MS       = 2000;  // ms between track log entries
+const int      LOG_MAX_ENTRIES       = 1000;  // max entries stored in RAM
 
 const int   PULSE_OUTPUT_PIN = 25;   // → NPN base, instrument pulse
 const int   AUX_OUTPUT_PIN   = 26;   // → transistor/relay, toggleable aux
@@ -69,6 +72,24 @@ TinyGPSPlus    gps;
 
 hw_timer_t   *pulseTimer  = nullptr;
 volatile bool timerEnabled = false;
+
+// ── Track log ─────────────────────────────────────────────────────────────────
+struct TrackPoint {
+  uint32_t ms;
+  float    lat;
+  float    lon;
+  float    speedKmh;
+  float    freq_hz;
+};
+
+TrackPoint trackLog[LOG_MAX_ENTRIES];
+int        trackCount = 0;
+
+void logTrackPoint(float lat, float lon, float speedKmh, float freq_hz) {
+  if (trackCount >= LOG_MAX_ENTRIES) return;  // full – stop silently
+  trackLog[trackCount++] = { millis(), lat, lon, speedKmh, freq_hz };
+}
+// ──────────────────────────────────────────────────────────────────────────────
 
 // Latest telemetry – updated each GPS cycle, read by HTTP handler
 struct Telemetry {
@@ -247,8 +268,27 @@ void setupWiFi() {
     httpServer.sendHeader("Access-Control-Allow-Origin", "*");
     httpServer.send(200, "application/json", buf);
   });
+
+  // Stream track log as CSV – chunked to avoid building a giant string in RAM
+  httpServer.on("/track.csv", []() {
+    httpServer.sendHeader("Access-Control-Allow-Origin", "*");
+    httpServer.sendHeader("Content-Disposition", "attachment; filename=track.csv");
+    httpServer.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    httpServer.send(200, "text/csv", "");
+    httpServer.sendContent("#,ms,lat,lon,speed_kmh,freq_hz\n");
+    char row[96];
+    for (int i = 0; i < trackCount; i++) {
+      const TrackPoint &p = trackLog[i];
+      snprintf(row, sizeof(row), "%d,%lu,%.6f,%.6f,%.2f,%.4f\n",
+               i + 1, (unsigned long)p.ms, p.lat, p.lon, p.speedKmh, p.freq_hz);
+      httpServer.sendContent(row);
+    }
+    httpServer.sendContent("");  // end chunked response
+    Serial.printf("HTTP: /track.csv served %d entries\n", trackCount);
+  });
+
   httpServer.begin();
-  Serial.println("HTTP: server started on port 80");
+  Serial.println("HTTP: server started on port 80 – /track.csv available");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -301,14 +341,22 @@ void loop() {
     telem.fixStatus  = fixSt;
 
     // Pulse output
+    float freq_hz = 0;
     if (hasFix) {
-      float freq_hz = (gps.speed.mps() / WHEEL_CIRCUMFERENCE_M) * PULSES_PER_REV;
+      freq_hz = (gps.speed.mps() / WHEEL_CIRCUMFERENCE_M) * PULSES_PER_REV;
       setPulseFrequency(freq_hz);
-      Serial.printf("Speed: %.1f km/h  Hdg: %.0f°  Alt: %.0fm  Sats: %d  → %.2f Hz\n",
-                    speedKmh, heading, altitude, sats, freq_hz);
+      Serial.printf("Speed: %.1f km/h → %.2f Hz (Hdg: %.0f°  Alt: %.0fm  Satellites: %d)\n",
+                    speedKmh, freq_hz, heading, altitude, sats);
     } else {
       setPulseFrequency(0);
       Serial.printf("No fix  (sats: %d)\n", sats);
+    }
+
+    // Track logging – record a point every LOG_INTERVAL_MS when we have a fix
+    static uint32_t lastLog = 0;
+    if (hasFix && millis() - lastLog >= LOG_INTERVAL_MS) {
+      lastLog = millis();
+      logTrackPoint(gps.location.lat(), gps.location.lng(), speedKmh, freq_hz);
     }
 
     // BLE notifications
