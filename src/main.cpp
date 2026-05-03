@@ -21,6 +21,8 @@
 //   BLE / WiFi / ArduinoOTA (built-in ESP32 Arduino Core, no extra dep)
 //
 // OTA:
+//   Disabled by default to save ~20-40 KB flash.
+//   To enable: uncomment 'build_flags = -D ENABLE_OTA' in platformio.ini.
 //   After first USB flash the board is reachable as 'moped-speedo' on the LAN.
 //   In PlatformIO: Upload → select 'moped-speedo.local' as upload target.
 //   WiFi credentials live in include/secrets.h (gitignored).
@@ -33,7 +35,9 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>   // CCCD descriptor – enables client notifications
 #include <WiFi.h>
+#ifdef ENABLE_OTA
 #include <ArduinoOTA.h>
+#endif
 #include <WebServer.h>
 #include "secrets.h"   // #define WIFI_SSID / WIFI_PASSWORD (gitignored)
 
@@ -193,7 +197,7 @@ void setupBLE() {
 // ── WiFi + OTA setup ──────────────────────────────────────────────────────────
 WebServer httpServer(80);
 
-void setupWiFiOTA() {
+void setupWiFi() {
   Serial.printf("WiFi: connecting to '%s'", WIFI_SSID);
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -217,6 +221,7 @@ void setupWiFiOTA() {
   chrIpAddress->setValue(ip.c_str());
   if (bleConnected) chrIpAddress->notify();
 
+#ifdef ENABLE_OTA
   ArduinoOTA.setHostname("moped-speedo");
   ArduinoOTA.onStart([]()  { Serial.println("OTA: start"); });
   ArduinoOTA.onEnd([]()    { Serial.println("\nOTA: done"); });
@@ -228,6 +233,7 @@ void setupWiFiOTA() {
   });
   ArduinoOTA.begin();
   Serial.println("OTA: ready – hostname 'moped-speedo'");
+#endif
 
   httpServer.on("/", []() {
     char buf[224];
@@ -265,13 +271,15 @@ void setup() {
   timerAlarmWrite(pulseTimer, 100000, true);
 
   setupBLE();
-  setupWiFiOTA();
+  setupWiFi();
 
   Serial.println("GPS Speedometer starting – waiting for fix...");
 }
 
 void loop() {
+#ifdef ENABLE_OTA
   ArduinoOTA.handle();
+#endif
   httpServer.handleClient();
   while (gpsSerial.available()) {
     gps.encode(gpsSerial.read());
