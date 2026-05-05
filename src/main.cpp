@@ -148,6 +148,12 @@ void IRAM_ATTR onTimer() {
   }
 }
 
+static void sendCommand(const char *cmd) {
+  gpsSerial.print(cmd);
+  gpsSerial.print("\r\n");
+  delay(200);
+}
+
 void setPulseFrequency(float freq_hz) {
   timerAlarmDisable(pulseTimer);
   if (freq_hz < 0.05f) {
@@ -309,7 +315,9 @@ void setup() {
   Serial.begin(115200);
 
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
-
+  sendCommand("$PMTK220,200*2C");   // 5 Hz = every 200 ms
+  sendCommand("$PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"); // example: RMC+GGA only
+  
   pinMode(PULSE_OUTPUT_PIN, OUTPUT);
   digitalWrite(PULSE_OUTPUT_PIN, LOW);
 
