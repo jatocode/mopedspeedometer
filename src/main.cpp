@@ -349,9 +349,12 @@ void loop() {
   if (gps.speed.isUpdated()) {
     bool hasFix = gps.location.isValid() && gps.speed.isValid();
 
-    float speedKmh  = hasFix ? gps.speed.kmph()    : 0.0f;
+    float gpsSpeedKmh = hasFix ? gps.speed.kmph() : 0.0f;
+    float speedKmh  = gpsSpeedKmh > 2.0f ? gpsSpeedKmh : 0.0f;  // filter out tiny noise when stopped
     float heading   = hasFix ? gps.course.deg()    : 0.0f;
     float altitude  = hasFix ? (float)gps.altitude.meters() : 0.0f;
+    float lat       = hasFix ? gps.location.lat()     : 0.0f;
+    float lon       = hasFix ? gps.location.lng()     : 0.0f;
     uint8_t sats    = gps.satellites.isValid() ? (uint8_t)gps.satellites.value() : 0;
     uint8_t fixSt   = hasFix ? 1 : 0;
 
@@ -366,8 +369,8 @@ void loop() {
     if (hasFix) {
       freq_hz = (gps.speed.mps() / WHEEL_CIRCUMFERENCE_M) * PULSES_PER_REV;
       setPulseFrequency(freq_hz);
-      Serial.printf("Speed: %.1f km/h → %.2f Hz (Hdg: %.0f°  Alt: %.0fm  Satellites: %d)\n",
-                    speedKmh, freq_hz, heading, altitude, sats);
+      Serial.printf("Speed: %.1f km/h → %.2f Hz (Hdg: %.0f°  Alt: %.0fm  Lon: %.6f  Lat: %.6f  Satellites: %d)\n",
+                    speedKmh, freq_hz, heading, altitude, lon, lat, sats);
     } else {
       setPulseFrequency(0);
       Serial.printf("No fix  (sats: %d)\n", sats);
