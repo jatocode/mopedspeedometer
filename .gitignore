@@ -3,3 +3,11 @@ include/secrets.h
 
 # PlatformIO build output
 .pio/
+
+# React + Vite (webapp/)
+webapp/node_modules/
+webapp/dist/
+webapp/.vite/
+webapp/.env
+webapp/.env.local
+webapp/.env.*.local
