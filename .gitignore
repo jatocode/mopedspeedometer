@@ -20,3 +20,5 @@ app/android/
 app/dist/
 app/.env
 app/.env.local
+
+.DS_Store
