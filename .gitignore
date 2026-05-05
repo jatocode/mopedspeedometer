@@ -11,3 +11,12 @@ webapp/.vite/
 webapp/.env
 webapp/.env.local
 webapp/.env.*.local
+
+# React Native / Expo (app/)
+app/node_modules/
+app/.expo/
+app/ios/
+app/android/
+app/dist/
+app/.env
+app/.env.local
